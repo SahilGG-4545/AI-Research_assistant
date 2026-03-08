@@ -16,7 +16,11 @@
 
 <br/>
 
-![Hero Screenshot](https://via.placeholder.com/900x500/06050f/8b5cf6?text=AI+Research+Assistant)
+<img width="1179" height="754" alt="AI Research Assistant - Brave 08_Mar_2026 06_37_20 PM" src="https://github.com/user-attachments/assets/04bffccc-2365-43e3-bb60-b11fb0fbd8b8" />
+<img width="1232" height="947" alt="AI Research Assistant - Brave 08_Mar_2026 06_39_33 PM" src="https://github.com/user-attachments/assets/8986e4e6-7e39-474a-932f-f0cb5822d38b" />
+<img width="1106" height="800" alt="AI Research Assistant - Brave 08_Mar_2026 06_39_42 PM" src="https://github.com/user-attachments/assets/6f3ae504-48da-489d-b52b-ec13d5f6c43c" />
+
+
 
 </div>
 
@@ -213,32 +217,6 @@ This approach achieves **grounded, document-faithful answers** without requiring
 
 ---
 
-## 🎨 UI Highlights
-
-- **Animated hero section** with rotating orbital rings and a glowing atomic core
-- **Glassmorphism** cards with `backdrop-filter: blur` throughout
-- **Scroll-triggered reveal animations** via `IntersectionObserver`
-- **Skeleton loaders** during search — no jarring empty states
-- **Typing indicator** (three bouncing dots) while AI is thinking
-- **Toast notifications** for all user feedback (success / error / info)
-- **Ripple effects** on button clicks
-- **Drag-and-drop** PDF upload zone
-- **Syntax-highlighted code** output with copy & download
-- Fully **responsive** — works on mobile, tablet, and desktop
-- Keyboard shortcut: press `/` anywhere to focus the search bar
-
----
-
-## 🔒 Security Considerations
-
-- File uploads validated server-side (PDF MIME type + extension check)
-- `MAX_CONTENT_LENGTH` set to 32 MB to prevent oversized uploads
-- User input sanitised with `escHtml()` before DOM insertion (XSS prevention)
-- Per-session PDF isolation — users cannot access each other's data
-- Secret key auto-generated via `secrets.token_hex` if not set in environment
-
----
-
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
@@ -252,3 +230,4 @@ This project is licensed under the [MIT License](LICENSE).
 *If this project helped you, please consider giving it a ⭐*
 
 </div>
+
