@@ -136,7 +136,6 @@ Create a `.env` file in the root directory:
 
 ```env
 GROQ_API_KEY=your_groq_api_key_here
-FLASK_SECRET=your_random_secret_key   # optional, auto-generated if omitted
 ```
 
 ### Run
@@ -229,5 +228,6 @@ This project is licensed under the [MIT License](LICENSE).
 *If this project helped you, please consider giving it a ⭐*
 
 </div>
+
 
 
