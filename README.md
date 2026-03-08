@@ -18,7 +18,6 @@
 
 <img width="1179" height="754" alt="AI Research Assistant - Brave 08_Mar_2026 06_37_20 PM" src="https://github.com/user-attachments/assets/04bffccc-2365-43e3-bb60-b11fb0fbd8b8" />
 <img width="1232" height="947" alt="AI Research Assistant - Brave 08_Mar_2026 06_39_33 PM" src="https://github.com/user-attachments/assets/8986e4e6-7e39-474a-932f-f0cb5822d38b" />
-<img width="1106" height="800" alt="AI Research Assistant - Brave 08_Mar_2026 06_39_42 PM" src="https://github.com/user-attachments/assets/6f3ae504-48da-489d-b52b-ec13d5f6c43c" />
 
 
 
@@ -230,4 +229,5 @@ This project is licensed under the [MIT License](LICENSE).
 *If this project helped you, please consider giving it a ⭐*
 
 </div>
+
 
