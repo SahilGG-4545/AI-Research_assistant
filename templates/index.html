@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Research Assistant</title>
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <!-- Highlight.js dark theme -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css" />
+  <!-- Main styles -->
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+  <!-- ═══════════════════ BACKGROUND ═══════════════════ -->
+  <div class="bg-wrap" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="grid-overlay"></div>
+  </div>
+
+  <!-- ═══════════════════ TOAST ═══════════════════ -->
+  <div id="toast-container" aria-live="polite"></div>
+
+  <!-- ═══════════════════ NAVBAR ═══════════════════ -->
+  <nav id="navbar">
+    <div class="nav-inner">
+      <div class="nav-brand">
+        <div class="brand-icon"><i class="fas fa-brain"></i></div>
+        <div>
+          <span class="brand-name">AI Research</span>
+          <span class="brand-tag">Assistant</span>
+        </div>
+      </div>
+      <div class="nav-pills">
+        <span class="nav-pill"><i class="fas fa-database"></i> Semantic Scholar</span>
+        <span class="nav-pill"><i class="fas fa-archive"></i> arXiv</span>
+        <span class="nav-pill pulse-dot"><i class="fas fa-circle"></i> Groq LLaMA 3.3</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ═══════════════════ HERO ═══════════════════ -->
+  <section class="hero" id="hero">
+    <div class="hero-content">
+      <div class="hero-eyebrow animate-in" style="--delay:0s">
+        <span class="eyebrow-badge"><i class="fas fa-sparkles"></i> Next-Gen Research Platform</span>
+      </div>
+      <h1 class="hero-title animate-in" style="--delay:.1s">
+        Your AI-Powered<br />
+        <span class="gradient-text">Research Assistant</span>
+      </h1>
+      <p class="hero-sub animate-in" style="--delay:.2s">
+        Search millions of academic papers, analyse PDFs with RAG, generate reports,
+        write code, and hold intelligent research conversations — all in one place.
+      </p>
+      <div class="hero-chips animate-in" style="--delay:.3s">
+        <span class="chip"><i class="fas fa-magnifying-glass"></i> Multi-Source Search</span>
+        <span class="chip"><i class="fas fa-file-pdf"></i> PDF RAG Q&amp;A</span>
+        <span class="chip"><i class="fas fa-comments"></i> AI Chatbot</span>
+        <span class="chip"><i class="fas fa-code"></i> Code Generator</span>
+        <span class="chip"><i class="fas fa-scale-balanced"></i> Paper Comparison</span>
+      </div>
+      <button class="hero-cta animate-in" style="--delay:.4s"
+              onclick="document.getElementById('app').scrollIntoView({behavior:'smooth'})">
+        <i class="fas fa-rocket"></i> Start Researching
+        <span class="btn-shine"></span>
+      </button>
+    </div>
+    <div class="hero-visual animate-in" style="--delay:.3s" aria-hidden="true">
+      <div class="visual-ring r1"></div>
+      <div class="visual-ring r2"></div>
+      <div class="visual-ring r3"></div>
+      <div class="visual-core"><i class="fas fa-atom"></i></div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ STATS ═══════════════════ -->
+  <section class="stats-section">
+    <div class="stats-inner">
+      <div class="stat-card reveal">
+        <div class="stat-icon purple"><i class="fas fa-database"></i></div>
+        <div class="stat-val">2</div>
+        <div class="stat-lbl">Data Sources</div>
+      </div>
+      <div class="stat-card reveal">
+        <div class="stat-icon cyan"><i class="fas fa-brain"></i></div>
+        <div class="stat-val">LLaMA 3.3</div>
+        <div class="stat-lbl">AI Model</div>
+      </div>
+      <div class="stat-card reveal">
+        <div class="stat-icon pink"><i class="fas fa-bolt"></i></div>
+        <div class="stat-val">Groq</div>
+        <div class="stat-lbl">Inference Engine</div>
+      </div>
+      <div class="stat-card reveal">
+        <div class="stat-icon green"><i class="fas fa-layer-group"></i></div>
+        <div class="stat-val">5</div>
+        <div class="stat-lbl">AI Features</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ APP ═══════════════════ -->
+  <section class="app-section" id="app">
+    <div class="app-inner">
+
+      <!-- TAB NAV -->
+      <div class="tab-nav" role="tablist">
+        <button class="tab-btn active" data-tab="search" role="tab" aria-selected="true"
+                onclick="switchTab('search')">
+          <i class="fas fa-magnifying-glass"></i>
+          <span>Search Papers</span>
+        </button>
+        <button class="tab-btn" data-tab="pdf" role="tab" aria-selected="false"
+                onclick="switchTab('pdf')">
+          <i class="fas fa-file-pdf"></i>
+          <span>PDF Q&amp;A</span>
+        </button>
+        <button class="tab-btn" data-tab="chatbot" role="tab" aria-selected="false"
+                onclick="switchTab('chatbot')">
+          <i class="fas fa-comments"></i>
+          <span>Chatbot</span>
+        </button>
+        <button class="tab-btn" data-tab="code" role="tab" aria-selected="false"
+                onclick="switchTab('code')">
+          <i class="fas fa-code"></i>
+          <span>Code Gen</span>
+        </button>
+        <button class="tab-btn" data-tab="compare" role="tab" aria-selected="false"
+                onclick="switchTab('compare')">
+          <i class="fas fa-scale-balanced"></i>
+          <span>Compare</span>
+        </button>
+      </div>
+
+      <!-- ── PANEL: SEARCH PAPERS ── -->
+      <div class="tab-panel active" id="panel-search" role="tabpanel">
+        <div class="panel-header">
+          <h2><i class="fas fa-magnifying-glass"></i> Search Academic Papers</h2>
+          <p>Search across Semantic Scholar &amp; arXiv simultaneously</p>
+        </div>
+
+        <div class="search-bar-wrap">
+          <div class="search-bar">
+            <i class="fas fa-search search-icon"></i>
+            <input type="text" id="search-input" placeholder="e.g. transformer models, image segmentation, BERT…"
+                   onkeydown="if(event.key==='Enter') searchPapers()" />
+            <button class="btn-primary" onclick="searchPapers()" id="search-btn">
+              <i class="fas fa-search"></i> Search
+            </button>
+          </div>
+        </div>
+
+        <!-- Results -->
+        <div id="search-results" class="results-wrap"></div>
+
+        <!-- Paper Detail -->
+        <div id="paper-detail" class="paper-detail hidden">
+          <div class="detail-header">
+            <button class="btn-ghost back-btn" onclick="closePaperDetail()">
+              <i class="fas fa-arrow-left"></i> Back to results
+            </button>
+          </div>
+          <div class="detail-body">
+            <div class="detail-meta">
+              <h3 id="detail-title"></h3>
+              <div id="detail-badges" class="detail-badges"></div>
+              <p id="detail-authors" class="detail-authors"></p>
+              <p id="detail-abstract" class="detail-abstract"></p>
+              <a id="detail-url" class="detail-url" target="_blank" rel="noopener noreferrer">
+                <i class="fas fa-external-link-alt"></i> View Paper
+              </a>
+            </div>
+            <div class="detail-actions">
+              <div class="action-card">
+                <h4><i class="fas fa-file-lines"></i> Paper Report</h4>
+                <p>Generate a structured academic report from the abstract</p>
+                <button class="btn-primary" onclick="generateReport()" id="report-btn">
+                  <i class="fas fa-wand-magic-sparkles"></i> Generate Report
+                </button>
+                <div id="report-output" class="ai-output hidden"></div>
+                <button id="download-report-btn" class="btn-ghost hidden" onclick="downloadReport()">
+                  <i class="fas fa-download"></i> Download Markdown
+                </button>
+              </div>
+              <div class="action-card">
+                <h4><i class="fas fa-circle-question"></i> Ask About This Paper</h4>
+                <p>Ask questions answered from the abstract using AI</p>
+                <div class="input-row">
+                  <input type="text" id="paper-q-input"
+                         placeholder="e.g. What dataset is used? What is the main contribution?"
+                         onkeydown="if(event.key==='Enter') askPaperQuestion()" />
+                  <button class="btn-accent" onclick="askPaperQuestion()">
+                    <i class="fas fa-paper-plane"></i>
+                  </button>
+                </div>
+                <div id="paper-chat" class="mini-chat"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PANEL: PDF Q&A ── -->
+      <div class="tab-panel" id="panel-pdf" role="tabpanel">
+        <div class="panel-header">
+          <h2><i class="fas fa-file-pdf"></i> PDF Upload &amp; RAG Q&amp;A</h2>
+          <p>Upload any PDF — ask questions, get a structured summary powered by RAG</p>
+        </div>
+
+        <div class="upload-zone" id="upload-zone"
+             ondragover="event.preventDefault(); this.classList.add('drag-over')"
+             ondragleave="this.classList.remove('drag-over')"
+             ondrop="handleDrop(event)">
+          <div class="upload-icon"><i class="fas fa-cloud-arrow-up"></i></div>
+          <p class="upload-title">Drag &amp; drop your PDF here</p>
+          <p class="upload-sub">or click to browse</p>
+          <input type="file" id="pdf-input" accept=".pdf" style="display:none"
+                 onchange="handleFileSelect(event)" />
+          <button class="btn-primary" onclick="document.getElementById('pdf-input').click()">
+            <i class="fas fa-folder-open"></i> Browse Files
+          </button>
+          <div id="upload-status" class="upload-status"></div>
+        </div>
+
+        <div id="pdf-qa-section" class="pdf-qa-section hidden">
+          <div class="pdf-ready-badge">
+            <i class="fas fa-circle-check"></i>
+            <span id="pdf-ready-text">PDF Loaded</span>
+          </div>
+          <div class="two-col">
+            <div class="action-card">
+              <h4><i class="fas fa-circle-question"></i> Ask About the PDF</h4>
+              <p>Get precise answers from the document using Retrieval-Augmented Generation</p>
+              <div class="input-row">
+                <input type="text" id="pdf-question"
+                       placeholder="e.g. What is the main conclusion? What method is used?"
+                       onkeydown="if(event.key==='Enter') askPDFQuestion()" />
+                <button class="btn-accent" onclick="askPDFQuestion()">
+                  <i class="fas fa-paper-plane"></i>
+                </button>
+              </div>
+              <div id="pdf-answer" class="ai-output hidden"></div>
+            </div>
+            <div class="action-card">
+              <h4><i class="fas fa-book-open"></i> PDF Summary Report</h4>
+              <p>Generate a structured summary with key points, definitions, and conclusions</p>
+              <button class="btn-primary full-w" onclick="generatePDFSummary()" id="pdf-summary-btn">
+                <i class="fas fa-wand-magic-sparkles"></i> Generate Summary
+              </button>
+              <div id="pdf-summary-output" class="ai-output hidden"></div>
+              <button id="download-pdf-summary-btn" class="btn-ghost hidden" onclick="downloadPDFSummary()">
+                <i class="fas fa-download"></i> Download Markdown
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PANEL: CHATBOT ── -->
+      <div class="tab-panel" id="panel-chatbot" role="tabpanel">
+        <div class="panel-header">
+          <h2><i class="fas fa-comments"></i> Research Chatbot</h2>
+          <p>Ask anything — research explanations, brainstorming, comparisons, and more</p>
+        </div>
+        <div class="chat-wrap">
+          <div class="chat-messages" id="chat-messages">
+            <div class="chat-welcome">
+              <div class="welcome-icon"><i class="fas fa-robot"></i></div>
+              <h3>Hello! I'm your AI research assistant.</h3>
+              <p>Ask me about research topics, methodologies, paper explanations, or anything academic.</p>
+              <div class="welcome-chips">
+                <button class="chip clickable" onclick="prefillChat('Explain the difference between CNNs and Transformers')">
+                  CNNs vs Transformers
+                </button>
+                <button class="chip clickable" onclick="prefillChat('What is RAG in machine learning?')">
+                  What is RAG?
+                </button>
+                <button class="chip clickable" onclick="prefillChat('How does self-attention work in BERT?')">
+                  Self-attention in BERT
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="chat-input-bar">
+            <button class="btn-ghost icon-btn" onclick="clearChat()" title="Clear history">
+              <i class="fas fa-trash-alt"></i>
+            </button>
+            <textarea id="chat-input" placeholder="Ask a research question…" rows="1"
+                      onkeydown="handleChatKey(event)" oninput="autoResize(this)"></textarea>
+            <button class="btn-primary icon-btn send-btn" onclick="sendMessage()" id="chat-send-btn">
+              <i class="fas fa-paper-plane"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PANEL: CODE GENERATOR ── -->
+      <div class="tab-panel" id="panel-code" role="tabpanel">
+        <div class="panel-header">
+          <h2><i class="fas fa-code"></i> Code Generator</h2>
+          <p>Describe a coding task and get production-ready code with comments</p>
+        </div>
+        <div class="code-gen-wrap">
+          <div class="code-input-section">
+            <div class="input-group">
+              <label>Describe the coding task</label>
+              <textarea id="code-task" rows="5"
+                        placeholder="e.g. Implement a PyTorch CNN for CIFAR-10 classification&#10;e.g. FastAPI endpoint returning paginated JSON&#10;e.g. Binary search tree with insert and search methods"></textarea>
+            </div>
+            <div class="input-group">
+              <label>Programming Language</label>
+              <div class="lang-select-wrap">
+                <select id="code-language">
+                  <option value="python">🐍 Python</option>
+                  <option value="javascript">🌐 JavaScript</option>
+                  <option value="typescript">🔷 TypeScript</option>
+                  <option value="java">☕ Java</option>
+                  <option value="cpp">⚙️ C++</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn-primary" onclick="generateCode()" id="gen-code-btn">
+              <i class="fas fa-wand-magic-sparkles"></i> Generate Code
+            </button>
+          </div>
+          <div id="code-output-section" class="code-output-section hidden">
+            <div class="code-output-header">
+              <span class="code-lang-badge" id="code-lang-badge"></span>
+              <div class="code-actions">
+                <button class="btn-ghost small" onclick="copyCode()">
+                  <i class="fas fa-copy"></i> Copy
+                </button>
+                <button class="btn-ghost small" onclick="downloadCode()">
+                  <i class="fas fa-download"></i> Download
+                </button>
+              </div>
+            </div>
+            <pre class="code-block"><code id="generated-code"></code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PANEL: COMPARE PAPERS ── -->
+      <div class="tab-panel" id="panel-compare" role="tabpanel">
+        <div class="panel-header">
+          <h2><i class="fas fa-scale-balanced"></i> Compare Papers</h2>
+          <p>Select two papers from your search results and compare them on any dimension</p>
+        </div>
+        <div class="compare-setup-wrap">
+          <div id="compare-no-papers" class="empty-state">
+            <div class="empty-icon"><i class="fas fa-magnifying-glass"></i></div>
+            <h3>No papers loaded</h3>
+            <p>Please search for papers first using the <strong>Search Papers</strong> tab.</p>
+          </div>
+          <div id="compare-setup" class="compare-setup hidden">
+            <div class="compare-selects">
+              <div class="input-group">
+                <label><i class="fas fa-file-alt"></i> First Paper</label>
+                <select id="compare-p1"></select>
+              </div>
+              <div class="compare-vs"><span>VS</span></div>
+              <div class="input-group">
+                <label><i class="fas fa-file-alt"></i> Second Paper</label>
+                <select id="compare-p2"></select>
+              </div>
+            </div>
+            <div class="input-group">
+              <label><i class="fas fa-filter"></i> Comparison Aspect</label>
+              <div class="lang-select-wrap">
+                <select id="compare-aspect">
+                  <option value="overall quality">Overall Quality</option>
+                  <option value="methodology">Methodology</option>
+                  <option value="results">Results &amp; Performance</option>
+                  <option value="applications">Applications</option>
+                  <option value="contributions">Contributions</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn-primary" onclick="comparePapers()" id="compare-btn">
+              <i class="fas fa-scale-balanced"></i> Compare Papers
+            </button>
+            <div id="compare-result" class="ai-output hidden"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /app-inner -->
+  </section>
+
+  <!-- ═══════════════════ FOOTER ═══════════════════ -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <i class="fas fa-brain"></i> AI Research Assistant
+      </div>
+      <p class="footer-text">
+        Powered by <strong>Groq</strong> + <strong>LLaMA 3.3 70B</strong> &nbsp;|&nbsp;
+        Sources: <strong>Semantic Scholar</strong> &amp; <strong>arXiv</strong> &nbsp;|&nbsp;
+        Built with <strong>Flask</strong>
+      </p>
+    </div>
+  </footer>
+
+  <!-- ═══════════════════ SCRIPTS ═══════════════════ -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
