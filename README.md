@@ -12,7 +12,11 @@ It combines **academic search, Retrieval-Augmented Generation (RAG), and agent-b
 The system allows users to search research papers, analyze documents, ask questions over PDFs, compare papers, and generate implementation-ready code.
 
 ---
+##Demo
+<img width="1179" height="754" alt="AI Research Assistant - Brave 08_Mar_2026 06_37_20 PM" src="https://github.com/user-attachments/assets/04bffccc-2365-43e3-bb60-b11fb0fbd8b8" />
+<img width="1232" height="947" alt="AI Research Assistant - Brave 08_Mar_2026 06_39_33 PM" src="https://github.com/user-attachments/assets/8986e4e6-7e39-474a-932f-f0cb5822d38b" />
 
+---
 ## Key Features
 
 ### Research Discovery
