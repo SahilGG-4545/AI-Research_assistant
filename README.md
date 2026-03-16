@@ -1,233 +1,177 @@
-<div align="center">
+# AI Research Assistant Agent
 
-# 🧠 AI Research Assistant
+AI Research Assistant Agent is an AI-powered platform designed to help users **discover, analyze, and synthesize academic research papers**.  
+It combines **academic search, Retrieval-Augmented Generation (RAG), and agent-based workflows** to transform research topics into structured insights.
 
-**A production-grade, full-stack AI platform for academic research — powered by Groq, LLaMA 3.3 70B, and multi-agent orchestration.**
-
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=flat-square&logo=python)](https://www.python.org/)
-[![Flask](https://img.shields.io/badge/Flask-3.0-black?style=flat-square&logo=flask)](https://flask.palletsprojects.com/)
-[![Groq](https://img.shields.io/badge/Groq-LLaMA%203.3%2070B-orange?style=flat-square)](https://groq.com/)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=flat-square)]()
-
-<br/>
-
-> *Search millions of papers · Analyse PDFs with RAG · Generate reports · Write code · Hold intelligent research conversations — all in one beautiful interface.*
-
-<br/>
-
-<img width="1179" height="754" alt="AI Research Assistant - Brave 08_Mar_2026 06_37_20 PM" src="https://github.com/user-attachments/assets/04bffccc-2365-43e3-bb60-b11fb0fbd8b8" />
-<img width="1232" height="947" alt="AI Research Assistant - Brave 08_Mar_2026 06_39_33 PM" src="https://github.com/user-attachments/assets/8986e4e6-7e39-474a-932f-f0cb5822d38b" />
-
-
-
-</div>
+The system allows users to search research papers, analyze documents, ask questions over PDFs, compare papers, and generate implementation-ready code.
 
 ---
 
-## ✨ Why This Project Stands Out
+## Key Features
 
-Most AI demos are single-feature wrappers around an LLM API. This is different. It is a **full-stack research intelligence platform** that combines:
+### Research Discovery
+- Search academic papers from **Semantic Scholar** and **arXiv**
+- Smart ranking and deduplication of results
 
-- **Multi-source live data retrieval** (Semantic Scholar + arXiv APIs in parallel)
-- **Retrieval-Augmented Generation (RAG)** on uploaded PDFs — not just prompting
-- **Multi-agent orchestration** via AutoGen for coordinated task execution
-- **Sub-second inference** via Groq's LPU hardware for a genuinely snappy UX
-- A **professional, animated web UI** built from scratch — no Streamlit, no templates
+### Paper Analysis
+- Generate structured research reports and download reports
+- Ask questions grounded in paper abstracts
+- Extract key insights such as methods, strengths, and limitations
+
+### PDF Question Answering (RAG)
+- Upload research papers or documents
+- Hybrid retrieval using **BM25 + vector embeddings**
+- Context-aware answers grounded in document content
+
+### Agent-Based Research Workflows
+- Multi-agent pipeline for research analysis
+- Paper comparison using structured extraction
+- Topic-level analysis of top research papers
+
+### Code Generation
+- Generate code implementations from research concepts
+- Developer → Reviewer workflow for improved code quality
 
 ---
 
-## 🚀 Features
+## Architecture
 
-| Feature | Description |
-|---|---|
-| 🔍 **Multi-Source Paper Search** | Searches Semantic Scholar & arXiv simultaneously using concurrent threads. Deduplicates, ranks by citations, and streams results. |
-| 📄 **PDF RAG Q&A** | Upload any PDF. The system chunks, indexes, and performs scored keyword retrieval to answer questions from the exact source text. |
-| 📊 **AI Paper Reports** | Generates structured academic reports (Executive Summary, Methodology, Strengths, Limitations, Future Work) from any paper. |
-| 💬 **Research Chatbot** | Persistent multi-turn conversation powered by LLaMA 3.3 70B. Full history context window management. |
-| 💻 **Code Generator** | Generates production-ready code in Python, JavaScript, TypeScript, Java, or C++ with syntax highlighting and one-click download. |
-| ⚖️ **Paper Comparison** | Side-by-side AI analysis of two papers across methodology, results, contributions, or overall quality. |
-| 📥 **Export Everything** | Download paper reports, PDF summaries, and generated code — all as files. |
+In simple terms, the app works like this: you ask for something in the web page, the backend decides which workflow to run, gathers the right information, asks the AI model to write the result, and sends it back to you.
 
----
+### Complete Flow 
 
-## 🏗️ Architecture
+```text
+┌───────────────────────────────────────────────────────────────┐
+│                    Browser (Vanilla JS)                       │
+│   Search Papers · Upload PDF · Compare · Generate Code        │          
+└───────────────────────────────┬───────────────────────────────┘
+                                │
+                        REST API (JSON)
+                                │
+                                ▼
+┌───────────────────────────────────────────────────────────────┐
+│                        Flask Backend                          │
+│     Routing · Input Validation · Session Management           │
+└───────────────┬───────────────────────┬───────────────────────┘
+                │                       │
+                ▼                       ▼
+      ┌───────────────────┐    ┌─────────────────────┐
+      │  Paper Search     │    │      PDF Q&A        │
+      │  Semantic Scholar │    │  Load + Split PDF   │
+      │  arXiv APIs       │    │  Chunk Selection    │
+      │  Rank + Merge     │    │  Context Builder    │
+      └──────────┬────────┘    └──────────┬──────────┘
+                 │                        │
+                 └──────────────┬─────────┘
+                                │
+                                ▼
+                 ┌───────────────────────────┐
+                 │     Compare / Code Gen    │
+                 │  Paper Comparison         │
+                 │  Research Code Generator  │
+                 └──────────────┬────────────┘
+                                │
+                                ▼
+┌───────────────────────────────────────────────────────────────┐
+│                   Groq Inference Engine                       │
+│                     LLaMA 3.3 70B                             │
+│             Context Processing + Response Gen                 │
+└───────────────────────────────┬───────────────────────────────┘
+                                │
+                                ▼
+┌───────────────────────────────────────────────────────────────┐
+│                        Agent Layer                            │
+│  search_agent · qa_agent · compare_agent · code_agent         │
+│  developer → reviewer workflow for generated code             │
+└───────────────────────────────┬───────────────────────────────┘
+                                │
+                                ▼
+┌───────────────────────────────────────────────────────────────┐
+│                        Final Output                           │
+│     UI Results · Download Reports · Code · Trace Logs         │
+└───────────────────────────────────────────────────────────────┘
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Browser (Vanilla JS)                  │
-│  Tab UI · Animations · Markdown Rendering · Toasts      │
-└───────────────────┬─────────────────────────────────────┘
-                    │ REST API (JSON / multipart)
-┌───────────────────▼─────────────────────────────────────┐
-│                   Flask Backend                          │
-│  9 API routes · Session management · Input validation   │
-└──────┬──────────────────────────┬────────────────────────┘
-       │                          │
-┌──────▼──────┐          ┌────────▼────────┐
-│ Search APIs │          │  Groq Inference  │
-│ Semantic    │          │  LLaMA 3.3 70B  │
-│ Scholar     │          │  (< 1s latency) │
-│ arXiv       │          └────────┬────────┘
-└─────────────┘                   │
-                         ┌────────▼────────┐
-                         │ AutoGen Agents  │
-                         │ search_agent    │
-                         │ qa_agent        │
-                         │ code_agent      │
-                         └─────────────────┘
-```
+---
 
-**Key design decisions:**
-- Paper searches run in **parallel threads** (`concurrent.futures`) — both sources return simultaneously
-- RAG uses **scored keyword chunking** with configurable overlap — no vector DB dependency required
-- LRU caching on search endpoints prevents redundant API calls
-- Sessions isolate PDF state per user — production-safe multi-user design
+
+### 🧱 Tech Stack
+
+| Layer | Technology |
+|------|------------|
+| **Language** | `Python` |
+| **Backend API** | `Flask` |
+| **LLM Inference** | `Groq` |
+| **Agent Framework** | `AutoGen` |
+| **Vector Database** | `ChromaDB` |
+| **Embeddings** | `Sentence Transformers` |
+| **Retrieval Strategy** | `BM25` + `Hybrid RAG` |
+| **Document Processing** | `PyPDF2` |
+| **Frontend** | `HTML` · `CSS` · `JavaScript` |
 
 ---
 
-## 🛠️ Tech Stack
+# Installation
 
-**Backend**
-- `Flask 3` — REST API server with session management
-- `Groq SDK` — LLaMA 3.3 70B inference (fastest available LLM API)
-- `AutoGen` — Multi-agent coordination framework
-- `PyPDF2` — PDF text extraction and chunking
-- `Requests` — Async-style parallel calls to Semantic Scholar & arXiv
-
-**Frontend**
-- Vanilla `HTML5 / CSS3 / JavaScript` — zero framework overhead
-- `marked.js` — Real-time Markdown rendering for AI responses
-- `highlight.js` — Syntax-highlighted code output (Tokyo Night theme)
-- CSS animations: `IntersectionObserver` scroll reveals, glassmorphism cards, animated background orbs, typing indicators
-- Google Fonts `Inter` + `JetBrains Mono`
-
----
-
-## ⚙️ Getting Started
-
-### Prerequisites
-- Python 3.10+
-- A free [Groq API key](https://console.groq.com/)
-
-### Installation
+## Clone the repository
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/your-username/ai-research-assistant.git
-cd ai-research-assistant
-
-# 2. Create and activate virtual environment
-python -m venv .venv
-.venv\Scripts\activate      # Windows
-source .venv/bin/activate   # macOS/Linux
-
-# 3. Install dependencies
-pip install -r requirements.txt
-
-# 4. Configure environment
-cp .env.example .env
-# Add your GROQ_API_KEY to .env
+git clone https://github.com/<your-username>/AI-Research_assistant-main.git
+cd AI-Research_assistant-main
 ```
 
-### Environment Variables
+## Create Virtual Environment
 
-Create a `.env` file in the root directory:
+```bash
+python -m venv .venv
+```
+
+Activate the environment:
+
+```bash
+# Windows
+.\.venv\Scripts\activate
+
+# macOS / Linux
+source .venv/bin/activate
+```
+
+## Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+# Configure Environment Variables
+
+Create a `.env` file in the project root:
 
 ```env
-GROQ_API_KEY=your_groq_api_key_here
+GROQ_API_KEY=your_api_key_here
 ```
 
-### Run
+---
+
+# Running the Application
+
+Start the server:
 
 ```bash
 python flask_app.py
 ```
 
-Open **http://localhost:5000** in your browser.
-
----
-
-## 📁 Project Structure
+Open the application in your browser:
 
 ```
-ai-research-assistant/
-├── flask_app.py            # Flask app — all API routes & session logic
-├── research_assistant.py   # Core AI engine — search, RAG, agents, LLM
-├── templates/
-│   └── index.html          # Single-page application shell
-├── static/
-│   ├── css/
-│   │   └── style.css       # Full UI stylesheet with animations
-│   └── js/
-│       └── app.js          # Frontend state machine & API client
-├── requirements.txt
-├── .env.example
-└── README.md
+http://localhost:5000
 ```
 
----
-
-## 🔌 API Reference
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/search` | Search Semantic Scholar + arXiv |
-| `POST` | `/api/paper-report` | Generate structured paper report |
-| `POST` | `/api/paper-question` | Answer question from paper abstract |
-| `POST` | `/api/pdf-upload` | Upload & chunk a PDF |
-| `POST` | `/api/pdf-question` | RAG Q&A over uploaded PDF |
-| `POST` | `/api/pdf-summary` | Generate structured PDF summary |
-| `POST` | `/api/chatbot` | Multi-turn research conversation |
-| `POST` | `/api/generate-code` | Generate code in 5 languages |
-| `POST` | `/api/compare-papers` | AI comparison of two papers |
 
 ---
 
-## 🧩 How RAG Works (Under the Hood)
+# License
 
-```
-PDF Upload
-    │
-    ▼
-Extract full text (PyPDF2)
-    │
-    ▼
-Chunk text (1000 chars, 200 overlap)
-    │
-    ▼
-Store chunks in server session
-    │
-    ▼  On question:
-Keyword scoring over all chunks
-    │
-    ▼
-Top-K relevant chunks selected
-    │
-    ▼
-Context + Question → Groq LLM
-    │
-    ▼
-Grounded answer (no hallucination from irrelevant context)
-```
-
-This approach achieves **grounded, document-faithful answers** without requiring a vector database, embedding model, or external services — making it deployable anywhere.
-
----
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
-
----
-
-<div align="center">
-
-**Built with 🔬 curiosity and ☕ coffee**
-
-*If this project helped you, please consider giving it a ⭐*
-
-</div>
-
-
+This project is licensed under the **MIT License**.
 

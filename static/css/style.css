@@ -771,8 +771,105 @@ textarea { resize: vertical; min-height: 80px; }
   animation: bounceIn .4s ease;
 }
 
+.rag-trace {
+  margin-top: .9rem;
+}
+
+.rag-trace details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,.03);
+  overflow: hidden;
+}
+
+.rag-trace summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .75rem .95rem;
+  color: var(--text);
+  font-size: .85rem;
+  font-weight: 600;
+  border-bottom: 1px solid transparent;
+}
+
+.rag-trace summary::-webkit-details-marker {
+  display: none;
+}
+
+.rag-trace details[open] summary {
+  border-bottom-color: var(--border);
+  background: rgba(139,92,246,.08);
+}
+
+.rag-trace-body {
+  padding: .9rem;
+  display: flex;
+  flex-direction: column;
+  gap: .9rem;
+}
+
+.trace-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .6rem;
+}
+
+.trace-pill {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  padding: .55rem .65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(0,0,0,.25);
+}
+
+.trace-pill span {
+  color: var(--text-dim);
+  font-size: .72rem;
+}
+
+.trace-pill strong {
+  color: var(--text);
+  font-size: .8rem;
+  word-break: break-word;
+}
+
+.trace-pill-wide {
+  grid-column: 1 / -1;
+}
+
+.trace-section h5 {
+  font-size: .82rem;
+  color: #c4b5fd;
+  margin-bottom: .35rem;
+}
+
+.trace-section ul,
+.trace-section ol {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: .35rem;
+  color: var(--text-muted);
+  font-size: .8rem;
+}
+
+.trace-section li strong {
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .trace-meta {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════
-   CHATBOT TAB
+   CHAT STYLES (Used by Paper Q&A)
    ═══════════════════════════════════════════════════════════ */
 .chat-wrap {
   display: flex; flex-direction: column;

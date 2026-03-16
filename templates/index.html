@@ -122,11 +122,6 @@
           <i class="fas fa-file-pdf"></i>
           <span>PDF Q&amp;A</span>
         </button>
-        <button class="tab-btn" data-tab="chatbot" role="tab" aria-selected="false"
-                onclick="switchTab('chatbot')">
-          <i class="fas fa-comments"></i>
-          <span>Chatbot</span>
-        </button>
         <button class="tab-btn" data-tab="code" role="tab" aria-selected="false"
                 onclick="switchTab('code')">
           <i class="fas fa-code"></i>
@@ -247,6 +242,22 @@
                 </button>
               </div>
               <div id="pdf-answer" class="ai-output hidden"></div>
+              <div id="pdf-rag-trace" class="rag-trace hidden">
+                <details>
+                  <summary><i class="fas fa-route"></i> How this answer was generated</summary>
+                  <div class="rag-trace-body">
+                    <div id="pdf-trace-meta" class="trace-meta"></div>
+                    <div class="trace-section">
+                      <h5>Retrieval stages</h5>
+                      <ul id="pdf-trace-stages"></ul>
+                    </div>
+                    <div class="trace-section">
+                      <h5>Final chunks used</h5>
+                      <ol id="pdf-trace-final"></ol>
+                    </div>
+                  </div>
+                </details>
+              </div>
             </div>
             <div class="action-card">
               <h4><i class="fas fa-book-open"></i> PDF Summary Report</h4>
@@ -259,44 +270,6 @@
                 <i class="fas fa-download"></i> Download Markdown
               </button>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── PANEL: CHATBOT ── -->
-      <div class="tab-panel" id="panel-chatbot" role="tabpanel">
-        <div class="panel-header">
-          <h2><i class="fas fa-comments"></i> Research Chatbot</h2>
-          <p>Ask anything — research explanations, brainstorming, comparisons, and more</p>
-        </div>
-        <div class="chat-wrap">
-          <div class="chat-messages" id="chat-messages">
-            <div class="chat-welcome">
-              <div class="welcome-icon"><i class="fas fa-robot"></i></div>
-              <h3>Hello! I'm your AI research assistant.</h3>
-              <p>Ask me about research topics, methodologies, paper explanations, or anything academic.</p>
-              <div class="welcome-chips">
-                <button class="chip clickable" onclick="prefillChat('Explain the difference between CNNs and Transformers')">
-                  CNNs vs Transformers
-                </button>
-                <button class="chip clickable" onclick="prefillChat('What is RAG in machine learning?')">
-                  What is RAG?
-                </button>
-                <button class="chip clickable" onclick="prefillChat('How does self-attention work in BERT?')">
-                  Self-attention in BERT
-                </button>
-              </div>
-            </div>
-          </div>
-          <div class="chat-input-bar">
-            <button class="btn-ghost icon-btn" onclick="clearChat()" title="Clear history">
-              <i class="fas fa-trash-alt"></i>
-            </button>
-            <textarea id="chat-input" placeholder="Ask a research question…" rows="1"
-                      onkeydown="handleChatKey(event)" oninput="autoResize(this)"></textarea>
-            <button class="btn-primary icon-btn send-btn" onclick="sendMessage()" id="chat-send-btn">
-              <i class="fas fa-paper-plane"></i>
-            </button>
           </div>
         </div>
       </div>
@@ -331,6 +304,14 @@
             </button>
           </div>
           <div id="code-output-section" class="code-output-section hidden">
+            <div id="code-agent-trace" class="rag-trace hidden" style="margin-bottom: 20px;">
+              <details>
+                <summary><i class="fas fa-users-cog"></i> View Agent Conversation Log</summary>
+                <div class="rag-trace-body" id="agent-chat-log" style="background:var(--bg-card); padding:15px; border-radius:8px; display:flex; flex-direction:column; gap:15px; max-height:400px; overflow-y:auto;">
+                  <!-- Chat messages will be injected here -->
+                </div>
+              </details>
+            </div>
             <div class="code-output-header">
               <span class="code-lang-badge" id="code-lang-badge"></span>
               <div class="code-actions">
@@ -351,9 +332,54 @@
       <div class="tab-panel" id="panel-compare" role="tabpanel">
         <div class="panel-header">
           <h2><i class="fas fa-scale-balanced"></i> Compare Papers</h2>
-          <p>Select two papers from your search results and compare them on any dimension</p>
+          <p>Manually compare two selected papers or auto-analyze top 3-5 papers by topic.</p>
         </div>
         <div class="compare-setup-wrap">
+          <div class="compare-setup" id="auto-compare-setup">
+            <div class="input-group">
+              <label><i class="fas fa-robot"></i> Auto Compare by Topic (Top 3-5 papers)</label>
+              <input type="text" id="auto-compare-topic"
+                     placeholder="e.g. vision transformers in medical imaging" />
+            </div>
+            <div class="compare-selects">
+              <div class="input-group">
+                <label><i class="fas fa-layer-group"></i> Number of Papers</label>
+                <div class="lang-select-wrap">
+                  <select id="auto-compare-topk">
+                    <option value="3">Top 3</option>
+                    <option value="4">Top 4</option>
+                    <option value="5">Top 5</option>
+                  </select>
+                </div>
+              </div>
+              <div class="compare-vs"><span>AUTO</span></div>
+              <div class="input-group">
+                <label><i class="fas fa-filter"></i> Focus Aspect</label>
+                <div class="lang-select-wrap">
+                  <select id="auto-compare-aspect">
+                    <option value="overall quality">Overall Quality</option>
+                    <option value="methodology">Methodology</option>
+                    <option value="results">Results &amp; Performance</option>
+                    <option value="applications">Applications</option>
+                    <option value="contributions">Contributions</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <button class="btn-primary" onclick="compareTopPapersAuto()" id="compare-auto-btn">
+              <i class="fas fa-brain"></i> Auto Compare Top Papers
+            </button>
+
+            <div id="auto-compare-agent-trace" class="rag-trace hidden">
+              <details>
+                <summary><i class="fas fa-users-cog"></i> View Agent Workflow Log</summary>
+                <div class="rag-trace-body" id="auto-compare-agent-log"></div>
+              </details>
+            </div>
+
+            <div id="auto-compare-result" class="ai-output hidden"></div>
+          </div>
+
           <div id="compare-no-papers" class="empty-state">
             <div class="empty-icon"><i class="fas fa-magnifying-glass"></i></div>
             <h3>No papers loaded</h3>

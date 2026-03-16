@@ -23,7 +23,7 @@ const state = {
   paperChatHistory: {},   // paperKey → [{role, content}]
   pdfReady: false,
   pdfChunks: 0,
-  chatHistory: [],        // [{role, content}]
+  pdfTrace: null,
   generatedCode: "",
   codeLanguage: "python",
   currentTab: "search",
@@ -352,6 +352,8 @@ async function uploadPDF(file) {
 
     // Reset previous results
     hide("pdf-answer");
+    hide("pdf-rag-trace");
+    state.pdfTrace = null;
     hide("pdf-summary-output");
     hide("download-pdf-summary-btn");
     $("pdf-question").value = "";
@@ -374,6 +376,8 @@ async function askPDFQuestion() {
   if (!state.pdfReady) { toast("Please upload a PDF first", "error"); return; }
 
   hide("pdf-answer");
+  hide("pdf-rag-trace");
+  state.pdfTrace = null;
   const spinner = document.createElement("div");
   spinner.className = "ai-output";
   spinner.innerHTML = `<span class="spinner"></span> Searching through the document…`;
@@ -383,9 +387,12 @@ async function askPDFQuestion() {
   try {
     const data = await apiFetch("/api/pdf-question", { question: q });
     showOutput("pdf-answer", renderMD(data.answer || ""));
+    state.pdfTrace = data.trace || null;
+    renderPDFTrace(state.pdfTrace);
     toast("Answer ready", "success");
   } catch (err) {
     showOutput("pdf-answer", `<span style="color:#f87171">${err.message}</span>`);
+    hide("pdf-rag-trace");
     toast(err.message, "error");
   }
 }
@@ -415,88 +422,6 @@ function downloadPDFSummary() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   TAB 3 — CHATBOT
-   ═══════════════════════════════════════════════════════════ */
-function prefillChat(text) {
-  $("chat-input").value = text;
-  autoResize($("chat-input"));
-  sendMessage();
-}
-
-function handleChatKey(e) {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
-}
-
-function autoResize(el) {
-  el.style.height = "auto";
-  el.style.height = Math.min(el.scrollHeight, 120) + "px";
-}
-
-async function sendMessage() {
-  const input = $("chat-input");
-  const msg = input.value.trim();
-  if (!msg) return;
-
-  // Remove welcome screen if present
-  const welcome = $("chat-messages").querySelector(".chat-welcome");
-  if (welcome) welcome.remove();
-
-  input.value = "";
-  input.style.height = "auto";
-
-  appendChatBubble("user", msg);
-  $("chat-send-btn").disabled = true;
-
-  const typingEl = appendTypingIndicator("chat-messages", "chat-typing");
-
-  try {
-    const data = await apiFetch("/api/chatbot", {
-      message: msg,
-      history: state.chatHistory.slice(-20), // send last 20 messages
-    });
-    removeTypingIndicator("chat-typing");
-    const reply = data.reply || "";
-    state.chatHistory.push({ role: "user", content: msg });
-    state.chatHistory.push({ role: "assistant", content: reply });
-    appendChatBubble("ai", reply);
-  } catch (err) {
-    removeTypingIndicator("chat-typing");
-    appendChatBubble("ai", `⚠️ Error: ${err.message}`);
-    toast(err.message, "error");
-  } finally {
-    $("chat-send-btn").disabled = false;
-  }
-}
-
-function appendChatBubble(role, content) {
-  const container = $("chat-messages");
-  const div = document.createElement("div");
-  div.className = `chat-msg ${role}`;
-  div.innerHTML = `
-    <div class="chat-avatar">
-      <i class="fas ${role === "user" ? "fa-user" : "fa-robot"}"></i>
-    </div>
-    <div class="chat-bubble">${renderMD(content)}</div>`;
-  container.appendChild(div);
-  container.querySelectorAll("pre code").forEach(hljs.highlightElement);
-  container.scrollTop = container.scrollHeight;
-}
-
-function clearChat() {
-  state.chatHistory = [];
-  $("chat-messages").innerHTML = `
-    <div class="chat-welcome">
-      <div class="welcome-icon"><i class="fas fa-robot"></i></div>
-      <h3>Chat cleared. Ready for new questions!</h3>
-      <p>Ask me anything about research topics, methodologies, or academic concepts.</p>
-    </div>`;
-  toast("Chat history cleared", "info");
-}
-
-/* ═══════════════════════════════════════════════════════════
    TAB 4 — CODE GENERATOR
    ═══════════════════════════════════════════════════════════ */
 async function generateCode() {
@@ -512,6 +437,38 @@ async function generateCode() {
     const data = await apiFetch("/api/generate-code", { task, language });
     state.generatedCode = data.code || "";
     state.codeLanguage = language;
+
+    if (data.trace && data.trace.chat_log) {
+      show("code-agent-trace");
+      const chatContainer = $("agent-chat-log");
+      chatContainer.innerHTML = ""; // Clear old
+      data.trace.chat_log.forEach(msg => {
+        const bubble = document.createElement("div");
+        const isQa = msg.role.includes("QA");
+        bubble.style.cssText = `
+          padding: 10px 15px; 
+          border-radius: 8px; 
+          background: ${isQa ? '#3a2024' : '#1e293b'}; 
+          border-left: 4px solid ${isQa ? '#ef4444' : '#3b82f6'};
+          font-size: 13px;
+        `;
+        const header = document.createElement("strong");
+        header.style.display = "block";
+        header.style.marginBottom = "5px";
+        header.style.color = isQa ? "#fca5a5" : "#93c5fd";
+        header.textContent = msg.role;
+        
+        const content = document.createElement("div");
+        content.style.whiteSpace = "pre-wrap";
+        content.textContent = msg.message;
+        
+        bubble.appendChild(header);
+        bubble.appendChild(content);
+        chatContainer.appendChild(bubble);
+      });
+    } else {
+      hide("code-agent-trace");
+    }
 
     const langLabels = {
       python: "🐍 Python", javascript: "🌐 JavaScript",
@@ -559,6 +516,11 @@ function downloadCode() {
    TAB 5 — COMPARE PAPERS
    ═══════════════════════════════════════════════════════════ */
 function populateCompareSelects() {
+  if ($("auto-compare-topic") && !$("auto-compare-topic").value.trim()) {
+    const topic = $("search-input")?.value?.trim() || "";
+    $("auto-compare-topic").value = topic;
+  }
+
   if (state.papers.length < 2) {
     hide("compare-setup");
     show("compare-no-papers");
@@ -607,6 +569,138 @@ async function comparePapers() {
   }
 }
 
+function shortText(value, maxLen = 120) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return "-";
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen - 3).trim() + "...";
+}
+
+function renderListInline(items) {
+  if (!Array.isArray(items) || items.length === 0) return "-";
+  return items.map((i) => shortText(i, 80)).join("; ");
+}
+
+function renderStructuredRecordsTable(records) {
+  if (!Array.isArray(records) || records.length === 0) {
+    return "<p>No structured records were generated.</p>";
+  }
+
+  const rows = records.map((r) => `
+    <tr>
+      <td>${escHtml(shortText(r.title, 60))}</td>
+      <td>${escHtml(shortText(r.problem, 130))}</td>
+      <td>${escHtml(shortText(r.method, 130))}</td>
+      <td>${escHtml(shortText(r.dataset, 80))}</td>
+      <td>${escHtml(shortText(r.results, 130))}</td>
+      <td>${escHtml(renderListInline(r.strengths))}</td>
+      <td>${escHtml(renderListInline(r.limitations))}</td>
+    </tr>
+  `).join("");
+
+  return `
+    <div style="overflow-x:auto; margin-top: 1rem;">
+      <table style="width:100%; border-collapse:collapse; font-size:0.88rem;">
+        <thead>
+          <tr>
+            <th style="text-align:left; padding:8px; border-bottom:1px solid rgba(255,255,255,.18);">Paper</th>
+            <th style="text-align:left; padding:8px; border-bottom:1px solid rgba(255,255,255,.18);">Problem</th>
+            <th style="text-align:left; padding:8px; border-bottom:1px solid rgba(255,255,255,.18);">Method</th>
+            <th style="text-align:left; padding:8px; border-bottom:1px solid rgba(255,255,255,.18);">Dataset</th>
+            <th style="text-align:left; padding:8px; border-bottom:1px solid rgba(255,255,255,.18);">Results</th>
+            <th style="text-align:left; padding:8px; border-bottom:1px solid rgba(255,255,255,.18);">Strengths</th>
+            <th style="text-align:left; padding:8px; border-bottom:1px solid rgba(255,255,255,.18);">Limitations</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderAutoCompareResult(data) {
+  const topic = escHtml(data.topic || "-");
+  const topK = escHtml(data.top_k || "-");
+  const aspect = escHtml(data.aspect || "overall quality");
+
+  const structuredTable = renderStructuredRecordsTable(data.structured || []);
+  const compareMd = renderMD(data.comparison_markdown || "");
+  const plannerMd = renderMD(data.insights_markdown || "");
+
+  return `
+    <h3 style="margin-bottom: 0.4rem;">Auto Analysis: ${topic}</h3>
+    <p style="margin-bottom: 0.9rem;"><strong>Papers:</strong> ${topK} &nbsp;|&nbsp; <strong>Aspect:</strong> ${aspect}</p>
+
+    <h4>Structured Extraction (Reader Agent)</h4>
+    ${structuredTable}
+
+    <h4 style="margin-top:1.2rem;">Cross-Paper Comparison (Compare Agent)</h4>
+    <div>${compareMd}</div>
+
+    <h4 style="margin-top:1.2rem;">Final Insights (Planner Agent)</h4>
+    <div>${plannerMd}</div>
+  `;
+}
+
+function renderAutoCompareAgentLog(trace) {
+  const wrap = $("auto-compare-agent-trace");
+  const body = $("auto-compare-agent-log");
+
+  if (!wrap || !body) return;
+
+  const logs = Array.isArray(trace?.agent_log) ? trace.agent_log : [];
+  if (logs.length === 0) {
+    hide("auto-compare-agent-trace");
+    return;
+  }
+
+  body.innerHTML = logs.map((entry) => `
+    <div style="padding:10px 12px; border:1px solid rgba(255,255,255,.12); border-radius:10px; margin-bottom:10px; background:rgba(255,255,255,.04);">
+      <div style="font-weight:700; margin-bottom:5px;">${escHtml(entry.role || "Agent")}</div>
+      <div style="font-size:0.9rem; line-height:1.5;">${escHtml(entry.message || "")}</div>
+    </div>
+  `).join("");
+
+  show("auto-compare-agent-trace");
+}
+
+async function compareTopPapersAuto() {
+  const topicEl = $("auto-compare-topic");
+  const topKEl = $("auto-compare-topk");
+  const aspectEl = $("auto-compare-aspect");
+
+  const topic = topicEl?.value?.trim() || $("search-input")?.value?.trim() || "";
+  const topK = parseInt(topKEl?.value || "3", 10);
+  const aspect = aspectEl?.value || "overall quality";
+
+  if (!topic) {
+    toast("Please enter a topic for auto comparison", "error");
+    return;
+  }
+
+  setLoading("compare-auto-btn", true);
+  hide("auto-compare-result");
+  hide("auto-compare-agent-trace");
+
+  try {
+    const data = await apiFetch("/api/compare-top-papers", {
+      topic,
+      top_k: topK,
+      aspect,
+    });
+
+    showOutput("auto-compare-result", renderAutoCompareResult(data));
+    renderAutoCompareAgentLog(data.trace || {});
+
+    toast("Auto comparison complete!", "success");
+    $("auto-compare-result").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    setLoading("compare-auto-btn", false, `<i class="fas fa-brain"></i> Auto Compare Top Papers`);
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════
    TYPING INDICATOR HELPERS
    ═══════════════════════════════════════════════════════════ */
@@ -617,17 +711,10 @@ function appendTypingIndicator(containerId, indicatorId) {
   const wrap = document.createElement("div");
   wrap.id = indicatorId;
 
-  if (containerId === "chat-messages") {
-    wrap.className = "chat-msg ai";
-    wrap.innerHTML = `
-      <div class="chat-avatar"><i class="fas fa-robot"></i></div>
-      <div class="typing-indicator"><span></span><span></span><span></span></div>`;
-  } else {
-    wrap.className = "mini-msg ai";
-    wrap.innerHTML = `
-      <div class="mini-avatar"><i class="fas fa-robot"></i></div>
-      <div class="typing-indicator"><span></span><span></span><span></span></div>`;
-  }
+  wrap.className = "mini-msg ai";
+  wrap.innerHTML = `
+    <div class="mini-avatar"><i class="fas fa-robot"></i></div>
+    <div class="typing-indicator"><span></span><span></span><span></span></div>`;
 
   container.appendChild(wrap);
   container.scrollTop = container.scrollHeight;
@@ -636,6 +723,68 @@ function appendTypingIndicator(containerId, indicatorId) {
 
 function removeTypingIndicator(id) {
   $(id)?.remove();
+}
+
+function formatChunkList(indices) {
+  if (!Array.isArray(indices) || indices.length === 0) return "None";
+  return indices.map((idx) => `#${idx}`).join(", ");
+}
+
+function renderPDFTrace(trace) {
+  const wrap = $("pdf-rag-trace");
+  const metaEl = $("pdf-trace-meta");
+  const stagesEl = $("pdf-trace-stages");
+  const finalEl = $("pdf-trace-final");
+
+  if (!wrap || !metaEl || !stagesEl || !finalEl) return;
+  if (!trace || typeof trace !== "object" || Object.keys(trace).length === 0) {
+    hide("pdf-rag-trace");
+    return;
+  }
+
+  const modeUsed = trace.mode_used || "unknown";
+  const modeLabel = modeUsed === "hybrid" ? "Hybrid (BM25 + Dense + RRF)" : "Baseline keyword fallback";
+  const rewritten = trace.query_rewritten ? "Yes" : "No";
+  const fallback = trace.fallback_used ? "Yes" : "No";
+  const chunkStats = `${trace.chunk_count_selected || 0} selected / ${trace.chunk_count_total || 0} total`;
+
+  const queryUsed = trace.query_used || "-";
+
+  metaEl.innerHTML = `
+    <div class="trace-pill"><span>Mode</span><strong>${escHtml(modeLabel)}</strong></div>
+    <div class="trace-pill"><span>Query Rewritten</span><strong>${rewritten}</strong></div>
+    <div class="trace-pill"><span>Fallback Used</span><strong>${fallback}</strong></div>
+    <div class="trace-pill"><span>Chunks</span><strong>${escHtml(chunkStats)}</strong></div>
+    <div class="trace-pill trace-pill-wide"><span>Query Used</span><strong>${escHtml(queryUsed)}</strong></div>
+  `;
+
+  const stages = trace.stage_top_chunks || {};
+  const stageRows = [
+    ["BM25 top", formatChunkList(stages.bm25)],
+    ["Dense top", formatChunkList(stages.dense)],
+    ["RRF top", formatChunkList(stages.rrf)],
+    ["Final used", formatChunkList(stages.final)],
+  ];
+
+  stagesEl.innerHTML = stageRows
+    .map(([label, value]) => `<li><strong>${escHtml(label)}:</strong> ${escHtml(value)}</li>`)
+    .join("");
+
+  const finalChunks = Array.isArray(trace.final_chunk_snippets) ? trace.final_chunk_snippets : [];
+  const finalIds = Array.isArray(stages.final) ? stages.final : [];
+
+  if (finalChunks.length === 0) {
+    finalEl.innerHTML = "<li>No final chunk snippets available.</li>";
+  } else {
+    finalEl.innerHTML = finalChunks
+      .map((snippet, i) => {
+        const chunkTag = finalIds[i] !== undefined ? `Chunk #${finalIds[i]}` : `Chunk ${i + 1}`;
+        return `<li><strong>${escHtml(chunkTag)}:</strong> ${escHtml(snippet)}...</li>`;
+      })
+      .join("");
+  }
+
+  show("pdf-rag-trace");
 }
 
 /* ═══════════════════════════════════════════════════════════

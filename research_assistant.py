@@ -5,6 +5,8 @@
 # ============================================================
 
 import os
+import re
+import json
 import requests
 from PyPDF2 import PdfReader
 from autogen import AssistantAgent, UserProxyAgent
@@ -86,17 +88,53 @@ code_agent = AssistantAgent(
 MAX_RESULTS = 7
 
 
+def _normalize_for_match(text: str) -> str:
+    clean = re.sub(r"[^a-z0-9\s]", " ", str(text or "").lower())
+    return " ".join(clean.split()).strip()
+
+
+def _parse_year(value) -> int:
+    text = str(value or "").strip()
+    if not text:
+        return 0
+    match = re.search(r"\d{4}", text)
+    if not match:
+        return 0
+    try:
+        return int(match.group(0))
+    except Exception:
+        return 0
+
+
+def _title_match_score(title: str, query: str):
+    norm_title = _normalize_for_match(title)
+    norm_query = _normalize_for_match(query)
+
+    if not norm_title or not norm_query:
+        return (0, 0, 0.0)
+
+    exact = 1 if norm_title == norm_query else 0
+    contains = 1 if norm_query in norm_title else 0
+
+    query_tokens = set(norm_query.split())
+    title_tokens = set(norm_title.split())
+    overlap = (len(query_tokens & title_tokens) / len(query_tokens)) if query_tokens else 0.0
+
+    return (exact, contains, overlap)
+
+
 @lru_cache(maxsize=100)
 def search_semantic_scholar(query, max_results=7):
 
-    url = (
-        "https://api.semanticscholar.org/graph/v1/paper/search?"
-        f"query={query}&limit={max_results}&"
-        "fields=title,abstract,authors,year,citationCount,url,venue"
-    )
+    url = "https://api.semanticscholar.org/graph/v1/paper/search"
+    params = {
+        "query": query,
+        "limit": max_results,
+        "fields": "title,abstract,authors,year,citationCount,url,venue",
+    }
 
     try:
-        res = requests.get(url, timeout=10).json()
+        res = requests.get(url, params=params, timeout=10).json()
         papers = []
 
         for p in res.get("data", []):
@@ -107,7 +145,11 @@ def search_semantic_scholar(query, max_results=7):
                 "title": p.get("title", ""),
                 "abstract": abstract,
                 "authors": [a["name"] for a in p.get("authors", [])],
+                "year": p.get("year", ""),
+                "citations": p.get("citationCount", 0),
+                "venue": p.get("venue", ""),
                 "url": p.get("url", ""),
+                "source": "Semantic Scholar",
 
             })
 
@@ -119,12 +161,17 @@ def search_semantic_scholar(query, max_results=7):
 
 @lru_cache(maxsize=100)
 def search_arxiv(query, max_results=7):
-    url = f"http://export.arxiv.org/api/query?search_query=all:{query}&start=0&max_results={max_results}"
+    url = "http://export.arxiv.org/api/query"
+    params = {
+        "search_query": f"all:{query}",
+        "start": 0,
+        "max_results": max_results,
+    }
 
     try:
         import xml.etree.ElementTree as ET
 
-        res = requests.get(url, timeout=10)
+        res = requests.get(url, params=params, timeout=10)
         root = ET.fromstring(res.content)
         papers = []
 
@@ -159,28 +206,50 @@ def search_arxiv(query, max_results=7):
 
 def search_all_sources(query, max_results=7):
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
-        sem_future = ex.submit(search_semantic_scholar, query, max_results)
-        arxiv_future = ex.submit(search_arxiv, query, max_results)
+    try:
+        final_k = max(1, int(max_results))
+    except Exception:
+        final_k = MAX_RESULTS
+
+    # Fetch a wider pool, then keep top-k after ranking.
+    fetch_per_source = max(20, final_k * 4)
+
+    exact_query = f'"{str(query).strip()}"'
+
+    # Combine broad retrieval with exact-phrase retrieval for title queries.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        sem_future = ex.submit(search_semantic_scholar, query, fetch_per_source)
+        sem_exact_future = ex.submit(search_semantic_scholar, exact_query, max(5, final_k))
+        arxiv_future = ex.submit(search_arxiv, query, fetch_per_source)
+        arxiv_exact_future = ex.submit(search_arxiv, exact_query, max(5, final_k))
 
         sem_res = sem_future.result()
+        sem_exact_res = sem_exact_future.result()
         arxiv_res = arxiv_future.result()
+        arxiv_exact_res = arxiv_exact_future.result()
 
-    combined = sem_res + arxiv_res
+    combined = sem_res + sem_exact_res + arxiv_res + arxiv_exact_res
 
     seen = set()
     unique = []
 
     for p in combined:
-        key = p["title"].lower().strip()
+        key = _normalize_for_match(p.get("title", ""))
         if key and key not in seen:
             unique.append(p)
             seen.add(key)
 
-    # Sort by citations then year
-    unique.sort(key=lambda x: (x.get("citations", 0), str(x.get("year", ""))), reverse=True)
+    # Rank by title relevance first (exact/contains/token overlap), then citations and year.
+    unique.sort(
+        key=lambda x: (
+            *_title_match_score(x.get("title", ""), query),
+            int(x.get("citations", 0) or 0),
+            _parse_year(x.get("year", "")),
+        ),
+        reverse=True,
+    )
 
-    return unique[:MAX_RESULTS]
+    return unique[:final_k]
 
 
 # ============================================================
@@ -210,26 +279,268 @@ def extract_pdf_text_chunked(pdf_file, chunk_size=1000, overlap=200):
     return {"full_text": clean, "chunks": chunks}
 
 
-def find_relevant_chunks(chunks, question, top_k=3):
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _tokenize_for_bm25(text: str):
+    return re.findall(r"\b\w+\b", text.lower())
+
+
+def _rewrite_query_for_retrieval(question: str) -> str:
+    if not _env_flag("RAG_QUERY_REWRITE", default=True):
+        return question
+
+    prompt = f"""
+Rewrite this question into one short search query for technical document retrieval.
+Keep intent unchanged.
+Return only one line.
+
+Question: {question}
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=80,
+        )
+        rewritten = (response.choices[0].message.content or "").strip()
+        if not rewritten:
+            return question
+        return rewritten.splitlines()[0].strip() or question
+    except Exception:
+        return question
+
+
+def _rrf_fuse_rankings(rank_lists, top_k=4, k=60):
+    fused_scores = {}
+
+    for rank_list in rank_lists:
+        for rank, chunk_idx in enumerate(rank_list, start=1):
+            fused_scores[chunk_idx] = fused_scores.get(chunk_idx, 0.0) + (1.0 / (k + rank))
+
+    ranked = sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
+    return [chunk_idx for chunk_idx, _ in ranked[:top_k]]
+
+
+def _rerank_chunk_indices(question: str, chunks, chunk_indices, top_k=4):
+    if not _env_flag("RAG_USE_RERANK", default=False):
+        return chunk_indices[:top_k], False
+
+    try:
+        from sentence_transformers import CrossEncoder
+    except Exception:
+        return chunk_indices[:top_k], False
+
+    model_name = os.getenv("RAG_RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+
+    try:
+        reranker = CrossEncoder(model_name)
+        pairs = [(question, chunks[idx]) for idx in chunk_indices]
+        scores = reranker.predict(pairs, show_progress_bar=False)
+        ranked = sorted(zip(chunk_indices, scores), key=lambda x: float(x[1]), reverse=True)
+        return [chunk_idx for chunk_idx, _ in ranked[:top_k]], True
+    except Exception:
+        return chunk_indices[:top_k], False
+
+
+def find_relevant_chunks_hybrid(chunks, question, top_k=4, bm25_k=8, dense_k=8, return_trace=False):
+    trace = {
+        "query_original": question,
+        "query_used": question,
+        "query_rewritten": False,
+        "rerank_used": False,
+        "stage_top_chunks": {
+            "bm25": [],
+            "dense": [],
+            "rrf": [],
+            "final": [],
+        },
+        "final_chunk_snippets": [],
+    }
+
+    if not chunks:
+        return ([], trace) if return_trace else []
+
+    query = _rewrite_query_for_retrieval(question)
+    trace["query_used"] = query
+    trace["query_rewritten"] = query.strip().lower() != question.strip().lower()
+
+    try:
+        import chromadb
+        from chromadb.config import Settings
+        from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+        from rank_bm25 import BM25Okapi
+    except Exception:
+        return ([], trace) if return_trace else []
+
+    tokenized_corpus = [_tokenize_for_bm25(chunk) for chunk in chunks]
+    bm25 = BM25Okapi(tokenized_corpus)
+    query_tokens = _tokenize_for_bm25(query)
+    bm25_scores = bm25.get_scores(query_tokens) if query_tokens else [0.0] * len(chunks)
+    bm25_ranked = [
+        idx
+        for idx, _ in sorted(
+            enumerate(bm25_scores),
+            key=lambda x: float(x[1]),
+            reverse=True,
+        )[:bm25_k]
+    ]
+    trace["stage_top_chunks"]["bm25"] = bm25_ranked[:]
+
+    dense_ranked = []
+    try:
+        embedding_model = os.getenv(
+            "RAG_EMBEDDING_MODEL",
+            "sentence-transformers/all-MiniLM-L6-v2",
+        )
+        chroma_client = chromadb.EphemeralClient(
+            settings=Settings(anonymized_telemetry=False),
+        )
+        collection = chroma_client.create_collection(
+            name="tmp_rag_collection",
+            embedding_function=SentenceTransformerEmbeddingFunction(model_name=embedding_model),
+            metadata={"hnsw:space": "cosine"},
+        )
+
+        ids = [f"chunk-{i}" for i in range(len(chunks))]
+        metadatas = [{"chunk_index": i} for i in range(len(chunks))]
+        collection.add(ids=ids, documents=chunks, metadatas=metadatas)
+
+        dense_response = collection.query(
+            query_texts=[query],
+            n_results=min(dense_k, len(chunks)),
+            include=["metadatas"],
+        )
+        dense_ranked = [
+            int(meta.get("chunk_index", 0))
+            for meta in dense_response.get("metadatas", [[]])[0]
+        ]
+    except Exception:
+        dense_ranked = []
+
+    trace["stage_top_chunks"]["dense"] = dense_ranked[:]
+
+    rank_lists = []
+    if bm25_ranked:
+        rank_lists.append(bm25_ranked)
+    if dense_ranked:
+        rank_lists.append(dense_ranked)
+
+    if not rank_lists:
+        return ([], trace) if return_trace else []
+
+    fused_indices = _rrf_fuse_rankings(rank_lists, top_k=max(top_k, 6), k=60)
+    trace["stage_top_chunks"]["rrf"] = fused_indices[:]
+    fused_indices, rerank_used = _rerank_chunk_indices(query, chunks, fused_indices, top_k=top_k)
+    trace["rerank_used"] = rerank_used
+    trace["stage_top_chunks"]["final"] = fused_indices[:]
+
+    trace["final_chunk_snippets"] = [
+        chunks[idx][:180] for idx in fused_indices if 0 <= idx < len(chunks)
+    ]
+
+    selected_chunks = [chunks[idx] for idx in fused_indices if 0 <= idx < len(chunks)]
+
+    if return_trace:
+        return selected_chunks, trace
+
+    return selected_chunks
+
+
+def _find_relevant_chunks_keyword_with_indices(chunks, question, top_k=3):
 
     terms = set(question.lower().split())
     scored = []
 
-    for c in chunks:
+    for idx, c in enumerate(chunks):
         score = sum(t in c.lower() for t in terms)
-        scored.append((score, c))
+        scored.append((score, idx, c))
 
     scored.sort(reverse=True)
+    selected = [(idx, c) for score, idx, c in scored[:top_k] if score > 0]
 
-    return [c for s, c in scored[:top_k] if s > 0]
+    return [c for idx, c in selected], [idx for idx, c in selected]
 
 
-def answer_with_rag(chunks, question):
+def find_relevant_chunks(chunks, question, top_k=3):
+    selected_chunks, _ = _find_relevant_chunks_keyword_with_indices(chunks, question, top_k=top_k)
+    return selected_chunks
 
-    relevant = find_relevant_chunks(chunks, question)
+
+def answer_with_rag(chunks, question, with_trace=False):
+
+    try:
+        final_top_k = max(1, int(os.getenv("RAG_FINAL_TOP_K", "4")))
+    except ValueError:
+        final_top_k = 4
+
+    trace = {
+        "mode_requested": "hybrid" if _env_flag("RAG_USE_HYBRID", default=True) else "baseline",
+        "mode_used": "none",
+        "fallback_used": False,
+        "query_original": question,
+        "query_used": question,
+        "query_rewritten": False,
+        "rerank_used": False,
+        "chunk_count_total": len(chunks),
+        "chunk_count_selected": 0,
+        "stage_top_chunks": {
+            "bm25": [],
+            "dense": [],
+            "rrf": [],
+            "final": [],
+        },
+        "final_chunk_snippets": [],
+    }
+
+    # Hybrid retrieval is primary and baseline keyword overlap is fallback.
+    relevant = []
+    if _env_flag("RAG_USE_HYBRID", default=True):
+        relevant, hybrid_trace = find_relevant_chunks_hybrid(
+            chunks,
+            question,
+            top_k=final_top_k,
+            return_trace=True,
+        )
+        trace.update(hybrid_trace)
+        if relevant:
+            trace["mode_used"] = "hybrid"
 
     if not relevant:
-        return "The document does not contain information related to this question."
+        fallback_chunks, fallback_indices = _find_relevant_chunks_keyword_with_indices(
+            chunks,
+            question,
+            top_k=max(3, final_top_k),
+        )
+        relevant = fallback_chunks
+        trace["mode_used"] = "baseline"
+        trace["fallback_used"] = _env_flag("RAG_USE_HYBRID", default=True)
+        trace["query_used"] = question
+        trace["query_rewritten"] = False
+        trace["rerank_used"] = False
+        trace["stage_top_chunks"] = {
+            "bm25": [],
+            "dense": [],
+            "rrf": [],
+            "final": fallback_indices,
+        }
+        trace["final_chunk_snippets"] = [
+            chunks[idx][:180] for idx in fallback_indices if 0 <= idx < len(chunks)
+        ]
+
+    if not relevant:
+        message = "The document does not contain information related to this question."
+        if with_trace:
+            return {"answer": message, "trace": trace}
+        return message
+
+    trace["chunk_count_selected"] = len(relevant)
 
     context = "\n\n".join(c[:600] for c in relevant)
 
@@ -245,7 +556,12 @@ Question:
 Answer clearly:
 """
 
-    return groq_chat(prompt).strip()
+    answer_text = groq_chat(prompt).strip()
+
+    if with_trace:
+        return {"answer": answer_text, "trace": trace}
+
+    return answer_text
 
 
 # ============================================================
@@ -334,33 +650,62 @@ Reply ONLY with:
 
 
 # ============================================================
-# 8. GENERAL CHATBOT
+# ============================================================
+# 8. CODE GENERATOR
 # ============================================================
 
-def chatbot_answer(prompt, history=None):
-    return groq_chat(prompt, conversation_history=history)
-
-
-# ============================================================
-# 9. CODE GENERATOR
-# ============================================================
-
-def generate_advanced_code(instruction: str, language: str = "python") -> str:
-
-    prompt = f"""
-Write {language} code for:
-
-{instruction}
-
-Rules:
-- ONLY code (no explanation)
-- Include comments
-- Use clean structure
-- Handle errors gracefully
+def generate_advanced_code(instruction: str, language: str = "python") -> dict:
+    """
+    Simulates a multi-agent Code Generation & Review Squad by storing
+    and passing a conversational log between a Developer and a QA Reviewer.
+    """
+    chat_log = []
+    
+    # --- 1. DEVELOPER AGENT ---
+    dev_prompt = f"""
+You are an expert {language} Developer. The user wants to build: "{instruction}".
+Write the code, explain your thought process briefly, and directly ask the "QA Reviewer" to check it for bugs or improvements.
+Make it sound like a real conversation.
 """
+    dev_response = groq_chat(dev_prompt, temperature=0.5).strip()
+    chat_log.append({"role": "Developer 🧑‍💻", "message": dev_response})
 
-    result = groq_chat(prompt, temperature=0.2)
-    return result.strip()
+    # --- 2. QA/REVIEWER AGENT ---
+    qa_prompt = f"""
+You are the QA and Security Reviewer. The Developer just sent you this message:
+
+"{dev_response}"
+
+Talk directly back to the Developer. Point out any missing edge cases, security flaws, or inefficiencies in their code. Suggest fixes in a conversational tone.
+If it's perfect, just say "Looks great to me."
+"""
+    qa_review = groq_chat(qa_prompt, temperature=0.3).strip()
+    chat_log.append({"role": "QA Reviewer 🕵️", "message": qa_review})
+
+    # --- 3. LEAD DEVELOPER AGENT (Final Fix) ---
+    lead_prompt = f"""
+You are the Developer again. You wrote this:
+"{dev_response}"
+
+The QA Reviewer replied with:
+"{qa_review}"
+
+Reply to the Reviewer, thank them (or agree/disagree), and then provide the FINAL fixed {language} code. 
+IMPORTANT: Put the final code inside standard markdown blocks like ```{language} ... ``` so it can be extracted.
+"""
+    final_response = groq_chat(lead_prompt, temperature=0.3).strip()
+    chat_log.append({"role": "Developer 🧑‍💻", "message": final_response})
+    
+    # Extract code from the final response
+    code_match = re.search(r"```(?:\w+)?\n(.*?)```", final_response, re.DOTALL)
+    if code_match:
+        final_code = code_match.group(1).strip()
+    else:
+        # Fallback cleanup
+        final_code = re.sub(r"^```[\w]*\n?", "", final_response, flags=re.MULTILINE)
+        final_code = re.sub(r"\n?```$", "", final_code).strip()
+        
+    return {"code": final_code, "trace": {"chat_log": chat_log}}
 
 
 # ============================================================
@@ -388,6 +733,300 @@ Write the comparison:
 """
 
     return groq_chat(prompt, temperature=0.3)
+
+
+def _extract_json_object(text: str) -> dict:
+    if not isinstance(text, str):
+        return {}
+
+    payload = text.strip()
+    if not payload:
+        return {}
+
+    try:
+        parsed = json.loads(payload)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        pass
+
+    match = re.search(r"\{[\s\S]*\}", payload)
+    if not match:
+        return {}
+
+    try:
+        parsed = json.loads(match.group(0))
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
+
+def _normalize_string_list(value, fallback="Not clearly stated in abstract."):
+    if isinstance(value, list):
+        cleaned = [str(v).strip() for v in value if str(v).strip()]
+    elif isinstance(value, str):
+        parts = re.split(r"\n|;|,", value)
+        cleaned = [p.strip(" -") for p in parts if p.strip()]
+    else:
+        cleaned = []
+
+    if not cleaned:
+        return [fallback]
+
+    return cleaned[:5]
+
+
+def _clean_text_value(value, fallback="Not specified"):
+    if isinstance(value, str):
+        text = " ".join(value.split()).strip()
+    else:
+        text = str(value).strip() if value is not None else ""
+    return text if text else fallback
+
+
+def _markdown_cell(value, max_len=140):
+    text = _clean_text_value(value, fallback="-")
+    if len(text) > max_len:
+        text = text[: max_len - 3].rstrip() + "..."
+    return text.replace("|", "/")
+
+
+def search_agent_find_papers(topic: str, top_k: int = 3):
+    """
+    Search Agent: retrieves candidate papers and keeps top-k with usable abstracts.
+    """
+    try:
+        top_k = int(top_k)
+    except Exception:
+        top_k = 3
+
+    top_k = max(3, min(5, top_k))
+    fetch_n = max(10, top_k * 4)
+
+    candidates = search_all_sources(topic, max_results=fetch_n)
+
+    selected = []
+    for p in candidates:
+        abstract = p.get("abstract")
+        if not isinstance(abstract, str) or not abstract.strip():
+            continue
+
+        selected.append(
+            {
+                "title": _clean_text_value(p.get("title", ""), fallback="Untitled"),
+                "abstract": abstract.strip(),
+                "authors": p.get("authors", []) if isinstance(p.get("authors", []), list) else [],
+                "year": p.get("year", ""),
+                "citations": p.get("citations", 0),
+                "venue": p.get("venue", ""),
+                "url": p.get("url", ""),
+                "source": p.get("source", "unknown"),
+            }
+        )
+
+        if len(selected) >= top_k:
+            break
+
+    return selected
+
+
+def reader_agent_extract_structured(paper: dict):
+    """
+    Reader Agent: extracts structured fields from a paper abstract.
+    """
+    title = _clean_text_value(paper.get("title", ""), fallback="Untitled")
+    abstract = _clean_text_value(paper.get("abstract", ""), fallback="")
+
+    prompt = f"""
+You are the Reader Agent for academic paper analysis.
+
+Extract the paper details from the abstract below.
+Return ONLY a valid JSON object (no markdown, no extra text) with EXACT keys:
+- problem
+- method
+- dataset
+- results
+- strengths (array of short bullet strings)
+- limitations (array of short bullet strings)
+
+If a field is missing, use "Not specified".
+
+Title: {title}
+Abstract:
+{abstract[:4000]}
+"""
+
+    try:
+        raw = groq_chat(prompt, temperature=0.15)
+    except Exception:
+        raw = "{}"
+
+    parsed = _extract_json_object(raw)
+
+    return {
+        "title": title,
+        "problem": _clean_text_value(parsed.get("problem", "Not specified")),
+        "method": _clean_text_value(parsed.get("method", "Not specified")),
+        "dataset": _clean_text_value(parsed.get("dataset", "Not specified")),
+        "results": _clean_text_value(parsed.get("results", "Not specified")),
+        "strengths": _normalize_string_list(parsed.get("strengths", [])),
+        "limitations": _normalize_string_list(parsed.get("limitations", [])),
+        "source": _clean_text_value(paper.get("source", "unknown"), fallback="unknown"),
+        "year": _clean_text_value(paper.get("year", ""), fallback="-"),
+        "url": _clean_text_value(paper.get("url", ""), fallback=""),
+    }
+
+
+def compare_agent_compare_structured(records, aspect="overall quality"):
+    """
+    Compare Agent: creates a cross-paper comparison matrix and aspect-focused verdict.
+    """
+    if not records:
+        return "No structured records available for comparison."
+
+    compact = []
+    for r in records:
+        compact.append(
+            {
+                "title": r.get("title", "Untitled"),
+                "problem": r.get("problem", "Not specified"),
+                "method": r.get("method", "Not specified"),
+                "dataset": r.get("dataset", "Not specified"),
+                "results": r.get("results", "Not specified"),
+                "strengths": r.get("strengths", []),
+                "limitations": r.get("limitations", []),
+            }
+        )
+
+    prompt = f"""
+You are the Compare Agent.
+
+Given structured records for multiple papers, produce:
+1) A concise markdown table with columns:
+   Paper | Problem | Method | Dataset | Results | Strengths | Limitations
+2) A section titled: "Aspect verdict: {aspect}"
+   Rank papers from strongest to weakest for this aspect and give one-line reason per paper.
+
+Structured records JSON:
+{json.dumps(compact, ensure_ascii=False)}
+"""
+
+    try:
+        return groq_chat(prompt, temperature=0.2).strip()
+    except Exception:
+        header = "| Paper | Problem | Method | Dataset | Results |\\n|---|---|---|---|---|"
+        rows = [
+            f"| {_markdown_cell(r.get('title'))} | {_markdown_cell(r.get('problem'))} | {_markdown_cell(r.get('method'))} | {_markdown_cell(r.get('dataset'))} | {_markdown_cell(r.get('results'))} |"
+            for r in records
+        ]
+        fallback = "\n".join([header] + rows)
+        fallback += f"\n\n### Aspect verdict: {aspect}\nUnable to produce ranked verdict due to a temporary model error."
+        return fallback
+
+
+def planner_agent_generate_insights(topic: str, records, comparison_markdown: str, aspect="overall quality"):
+    """
+    Planner Agent: synthesizes final insights and recommended next steps.
+    """
+    if not records:
+        return "No records available for final planning insights."
+
+    prompt = f"""
+You are the Planner Agent for research analysis.
+
+Using the structured records and comparison below, write a concise final report with sections:
+1. Best Paper(s) for {aspect}
+2. Common Trends Across Papers
+3. Key Gaps and Limitations in Current Research
+4. Suggested Next Reading / Next Experiments
+
+Topic: {topic}
+
+Structured records JSON:
+{json.dumps(records, ensure_ascii=False)}
+
+Comparison output:
+{comparison_markdown[:5000]}
+"""
+
+    try:
+        return groq_chat(prompt, temperature=0.25).strip()
+    except Exception:
+        return (
+            "### Best Paper(s)\n"
+            "Could not compute a reliable best-paper verdict right now.\n\n"
+            "### Common Trends\n"
+            "Most selected papers focus on similar problem framing with variations in methods.\n\n"
+            "### Key Gaps and Limitations\n"
+            "Abstract-only analysis can miss implementation details and hard metrics.\n\n"
+            "### Suggested Next Steps\n"
+            "Open full PDFs for top papers and re-run a deeper comparison with full-text evidence."
+        )
+
+
+def analyze_topic_multi_paper(topic: str, top_k: int = 3, aspect: str = "overall quality") -> dict:
+    """
+    End-to-end PoC pipeline:
+    Search Agent -> Reader Agent -> Compare Agent -> Planner Agent
+    """
+    topic = str(topic or "").strip()
+    if not topic:
+        return {"error": "Topic is required."}
+
+    selected_papers = search_agent_find_papers(topic, top_k=top_k)
+    if len(selected_papers) < 2:
+        return {"error": "Not enough papers with usable abstracts were found for this topic."}
+
+    structured_records = []
+    agent_log = [
+        {
+            "role": "Search Agent",
+            "message": f"Found {len(selected_papers)} papers with usable abstracts for topic '{topic}'.",
+        }
+    ]
+
+    for idx, paper in enumerate(selected_papers, start=1):
+        structured = reader_agent_extract_structured(paper)
+        structured_records.append(structured)
+        agent_log.append(
+            {
+                "role": "Reader Agent",
+                "message": f"Extracted structured fields for paper {idx}: {structured.get('title', 'Untitled')}",
+            }
+        )
+
+    comparison_markdown = compare_agent_compare_structured(structured_records, aspect=aspect)
+    agent_log.append(
+        {
+            "role": "Compare Agent",
+            "message": f"Generated cross-paper matrix and ranking for aspect '{aspect}'.",
+        }
+    )
+
+    insights_markdown = planner_agent_generate_insights(
+        topic,
+        structured_records,
+        comparison_markdown,
+        aspect=aspect,
+    )
+    agent_log.append(
+        {
+            "role": "Planner Agent",
+            "message": "Generated final insights, research gaps, and suggested next steps.",
+        }
+    )
+
+    return {
+        "topic": topic,
+        "aspect": aspect,
+        "top_k": len(selected_papers),
+        "papers": selected_papers,
+        "structured": structured_records,
+        "comparison_markdown": comparison_markdown,
+        "insights_markdown": insights_markdown,
+        "trace": {"agent_log": agent_log},
+    }
+
+
 def generate_pdf_summary_report(full_text: str) -> str:
     """
     Generates a structured summary report of a PDF's extracted full text.

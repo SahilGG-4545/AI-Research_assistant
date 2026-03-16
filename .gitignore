@@ -6,6 +6,9 @@ dist/
 wheels/
 *.egg-info
 .env
+.rag_lab_chroma/
+rag_test_lab.py
+
 
 # Virtual environments
 .venv

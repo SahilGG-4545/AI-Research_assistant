@@ -4,3 +4,7 @@ groq
 PyPDF2
 requests
 autogen
+sentence-transformers
+chromadb
+rank-bm25
+langchain-text-splitters

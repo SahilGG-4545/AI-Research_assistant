@@ -12,10 +12,10 @@ from research_assistant import (
     answer_with_rag,
     generate_paper_report,
     answer_question_about_selected_paper,
-    chatbot_answer,
     generate_advanced_code,
     generate_pdf_summary_report,
     compare_two_papers_rag,
+    analyze_topic_multi_paper,
 )
 
 app = Flask(__name__)
@@ -118,8 +118,16 @@ def api_pdf_question():
     question = str(data.get("question", "")).strip()
     if not question:
         return jsonify({"error": "Question is required"}), 400
-    answer = answer_with_rag(_pdf_store[sid]["chunks"], question)
-    return jsonify({"answer": answer})
+    result = answer_with_rag(_pdf_store[sid]["chunks"], question, with_trace=True)
+
+    if isinstance(result, dict):
+        answer = str(result.get("answer", ""))
+        trace = result.get("trace", {})
+    else:
+        answer = str(result)
+        trace = {}
+
+    return jsonify({"answer": answer, "trace": trace})
 
 
 # ──────────────────────────────────────────────────────────────
@@ -136,20 +144,6 @@ def api_pdf_summary():
 
 
 # ──────────────────────────────────────────────────────────────
-# API — CHATBOT
-# ──────────────────────────────────────────────────────────────
-
-@app.route("/api/chatbot", methods=["POST"])
-def api_chatbot():
-    data = request.get_json(silent=True) or {}
-    message = str(data.get("message", "")).strip()
-    history = data.get("history", [])
-    if not message:
-        return jsonify({"error": "Message is required"}), 400
-    reply = chatbot_answer(message, history=history)
-    return jsonify({"reply": reply})
-
-
 # ──────────────────────────────────────────────────────────────
 # API — CODE GENERATOR
 # ──────────────────────────────────────────────────────────────
@@ -163,8 +157,12 @@ def api_generate_code():
         language = "python"
     if not task:
         return jsonify({"error": "Task description is required"}), 400
-    code = generate_advanced_code(task, language=language)
-    return jsonify({"code": code})
+    
+    result = generate_advanced_code(task, language=language)
+    if isinstance(result, dict) and "code" in result:
+        return jsonify({"code": result["code"], "trace": result.get("trace", {})})
+    
+    return jsonify({"code": result})
 
 
 # ──────────────────────────────────────────────────────────────
@@ -183,6 +181,28 @@ def api_compare_papers():
         return jsonify({"error": "Both papers must have abstracts for comparison"}), 400
     result = compare_two_papers_rag(text1, text2, aspect)
     return jsonify({"result": result})
+
+
+@app.route("/api/compare-top-papers", methods=["POST"])
+def api_compare_top_papers():
+    data = request.get_json(silent=True) or {}
+    topic = str(data.get("topic", "")).strip()
+    aspect = str(data.get("aspect", "overall quality")).strip() or "overall quality"
+
+    try:
+        top_k = int(data.get("top_k", 3))
+    except Exception:
+        top_k = 3
+
+    if not topic:
+        return jsonify({"error": "Topic is required"}), 400
+
+    result = analyze_topic_multi_paper(topic=topic, top_k=top_k, aspect=aspect)
+
+    if isinstance(result, dict) and result.get("error"):
+        return jsonify({"error": result["error"]}), 400
+
+    return jsonify(result)
 
 
 # ──────────────────────────────────────────────────────────────
