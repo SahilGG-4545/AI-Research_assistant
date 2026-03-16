@@ -1,5 +1,11 @@
 # AI Research Assistant Agent
 
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=flat-square&logo=python)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-3.0-black?style=flat-square&logo=flask)](https://flask.palletsprojects.com/)
+[![Groq](https://img.shields.io/badge/Groq-LLaMA%203.3%2070B-orange?style=flat-square)](https://groq.com/)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=flat-square)]()
+
 AI Research Assistant Agent is an AI-powered platform designed to help users **discover, analyze, and synthesize academic research papers**.  
 It combines **academic search, Retrieval-Augmented Generation (RAG), and agent-based workflows** to transform research topics into structured insights.
 
