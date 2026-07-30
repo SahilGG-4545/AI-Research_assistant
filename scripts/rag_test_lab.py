@@ -1,10 +1,15 @@
 """
+scripts/rag_test_lab.py
+────────────────────────
 Simple RAG test script (separate from Flask app).
 
 Purpose:
 - Keep experimentation easy for a beginner.
 - Test retrieval quality in terminal.
 - Do not touch production Flask code.
+
+Usage:
+    python scripts/rag_test_lab.py
 """
 
 import os

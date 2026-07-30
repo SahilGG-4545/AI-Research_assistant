@@ -1,26 +1,36 @@
 """
-AI Research Assistant — Flask Backend
-Serves the professional web UI and exposes REST APIs for all AI features.
+app/routes/api.py
+──────────────────
+All Flask page and API routes for the AI Research Assistant.
+
+Endpoints:
+  GET  /                        → index page
+  POST /api/search              → paper search
+  POST /api/paper-report        → generate paper report
+  POST /api/paper-question      → Q&A on a paper abstract
+  POST /api/pdf-upload          → upload & parse PDF
+  POST /api/pdf-question        → RAG Q&A on uploaded PDF
+  POST /api/pdf-summary         → summarise uploaded PDF
+  POST /api/generate-code       → multi-agent code generation
+  POST /api/compare-papers      → compare two papers
+  POST /api/compare-top-papers  → multi-paper topic analysis
 """
 
-import os
 import secrets
-from flask import Flask, render_template, request, jsonify, session
-from research_assistant import (
-    search_all_sources,
-    extract_pdf_text_chunked,
-    answer_with_rag,
-    generate_paper_report,
+
+from flask import Blueprint, render_template, request, jsonify, session
+
+from app.services.search import search_all_sources
+from app.services.rag import extract_pdf_text_chunked, answer_with_rag
+from app.services.report import generate_paper_report, generate_pdf_summary_report
+from app.services.code_gen import generate_advanced_code
+from app.services.analysis import (
     answer_question_about_selected_paper,
-    generate_advanced_code,
-    generate_pdf_summary_report,
     compare_two_papers_rag,
     analyze_topic_multi_paper,
 )
 
-app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET", secrets.token_hex(32))
-app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB
+bp = Blueprint("api", __name__)
 
 # Server-side PDF storage keyed by session ID
 _pdf_store: dict = {}
@@ -39,7 +49,7 @@ def _sid() -> str:
 # PAGES
 # ──────────────────────────────────────────────────────────────
 
-@app.route("/")
+@bp.route("/")
 def index():
     return render_template("index.html")
 
@@ -48,7 +58,7 @@ def index():
 # API — SEARCH PAPERS
 # ──────────────────────────────────────────────────────────────
 
-@app.route("/api/search", methods=["POST"])
+@bp.route("/api/search", methods=["POST"])
 def api_search():
     data = request.get_json(silent=True) or {}
     topic = str(data.get("topic", "")).strip()
@@ -62,7 +72,7 @@ def api_search():
 # API — PAPER REPORT
 # ──────────────────────────────────────────────────────────────
 
-@app.route("/api/paper-report", methods=["POST"])
+@bp.route("/api/paper-report", methods=["POST"])
 def api_paper_report():
     paper = request.get_json(silent=True) or {}
     report = generate_paper_report(paper)
@@ -73,7 +83,7 @@ def api_paper_report():
 # API — PAPER Q&A
 # ──────────────────────────────────────────────────────────────
 
-@app.route("/api/paper-question", methods=["POST"])
+@bp.route("/api/paper-question", methods=["POST"])
 def api_paper_question():
     data = request.get_json(silent=True) or {}
     paper = data.get("paper", {})
@@ -89,7 +99,7 @@ def api_paper_question():
 # API — PDF UPLOAD
 # ──────────────────────────────────────────────────────────────
 
-@app.route("/api/pdf-upload", methods=["POST"])
+@bp.route("/api/pdf-upload", methods=["POST"])
 def api_pdf_upload():
     if "pdf" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
@@ -109,7 +119,7 @@ def api_pdf_upload():
 # API — PDF Q&A
 # ──────────────────────────────────────────────────────────────
 
-@app.route("/api/pdf-question", methods=["POST"])
+@bp.route("/api/pdf-question", methods=["POST"])
 def api_pdf_question():
     sid = _sid()
     if sid not in _pdf_store:
@@ -134,7 +144,7 @@ def api_pdf_question():
 # API — PDF SUMMARY
 # ──────────────────────────────────────────────────────────────
 
-@app.route("/api/pdf-summary", methods=["POST"])
+@bp.route("/api/pdf-summary", methods=["POST"])
 def api_pdf_summary():
     sid = _sid()
     if sid not in _pdf_store:
@@ -144,11 +154,10 @@ def api_pdf_summary():
 
 
 # ──────────────────────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────
 # API — CODE GENERATOR
 # ──────────────────────────────────────────────────────────────
 
-@app.route("/api/generate-code", methods=["POST"])
+@bp.route("/api/generate-code", methods=["POST"])
 def api_generate_code():
     data = request.get_json(silent=True) or {}
     task = str(data.get("task", "")).strip()
@@ -157,11 +166,11 @@ def api_generate_code():
         language = "python"
     if not task:
         return jsonify({"error": "Task description is required"}), 400
-    
+
     result = generate_advanced_code(task, language=language)
     if isinstance(result, dict) and "code" in result:
         return jsonify({"code": result["code"], "trace": result.get("trace", {})})
-    
+
     return jsonify({"code": result})
 
 
@@ -169,7 +178,7 @@ def api_generate_code():
 # API — COMPARE PAPERS
 # ──────────────────────────────────────────────────────────────
 
-@app.route("/api/compare-papers", methods=["POST"])
+@bp.route("/api/compare-papers", methods=["POST"])
 def api_compare_papers():
     data = request.get_json(silent=True) or {}
     paper1 = data.get("paper1", {})
@@ -183,7 +192,7 @@ def api_compare_papers():
     return jsonify({"result": result})
 
 
-@app.route("/api/compare-top-papers", methods=["POST"])
+@bp.route("/api/compare-top-papers", methods=["POST"])
 def api_compare_top_papers():
     data = request.get_json(silent=True) or {}
     topic = str(data.get("topic", "")).strip()
@@ -203,11 +212,3 @@ def api_compare_top_papers():
         return jsonify({"error": result["error"]}), 400
 
     return jsonify(result)
-
-
-# ──────────────────────────────────────────────────────────────
-# ENTRY POINT
-# ──────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    app.run(debug=True, port=5000)

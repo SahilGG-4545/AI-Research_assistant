@@ -5,11 +5,21 @@ build/
 dist/
 wheels/
 *.egg-info
-.env
-.rag_lab_chroma/
-rag_test_lab.py
 
+# Environment
+.env
 
 # Virtual environments
 .venv
+
+# Lock files
 uv.lock
+
+# RAG lab Chroma DB (local experiment artefact)
+.rag_lab_chroma/
+
+# IDE
+.vscode/
+.idea/
+
+/extras
